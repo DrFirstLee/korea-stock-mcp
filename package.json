@@ -1,6 +1,6 @@
 {
     "name": "@drfirst/korea-stock-mcp",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "description": "한국 주식 시장 데이터 조회 MCP 서버 (완전 Node.js)",
     "type": "module",
     "main": "index.js",
