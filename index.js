@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { load as loadHtml } from "cheerio";
+import axios from "axios";
 import iconv from "iconv-lite";
 
 
@@ -39,47 +40,102 @@ function parseKoreanNumber(text) {
   return Number.isNaN(num) ? null : num;
 }
 
-// 1) ETF: 시가총액 순
-async function getEtfsByMarketCap(limit = 50) {
-  const url = `${BASE}/sise/etf.naver`;
-  const $ = await fetchHtml(url);
-  const items = [];
+/**
+ * ETF: 시가총액 기준 상위 ETF 리스트
+ * etfType: 0 = 전체 (페이지 탭 기준)
+ */
+async function getEtfsByMarketCap(limit = 50, etfType = 0) {
+  // 브라우저에서 사용하는 API 엔드포인트 그대로 사용
+  const apiUrl = `${BASE}/api/sise/etfItemList.nhn?etfType=${etfType}` +
+                 `&targetColumn=market_sum&sortOrder=desc`;
 
-  // 테이블 구조는 Naver 쪽 변경 가능성이 있으므로
-  // "a" 태그가 있고, code=xxxx 포함된 링크가 있는 행만 추출
-  $("table tbody tr").each((_, el) => {
-    const anchor = $(el).find("a").first();
-    const name = anchor.text().trim();
-    if (!name) return;
-
-    const href = anchor.attr("href") || "";
-    const codeMatch = href.match(/code=(\d{6})/);
-    const code = codeMatch ? codeMatch[1] : null;
-
-    const tds = $(el).find("td");
-    const currentPriceText = tds.eq(2).text().trim(); // 보통 현재가 위치
-    const navText = tds.eq(3).text().trim();
-    const changeRateText = tds.eq(5).text().trim(); // 등락률
-
-    items.push({
-      name,
-      code,
-      currentPrice: {
-        raw: currentPriceText,
-        value: parseKoreanNumber(currentPriceText)
-      },
-      nav: {
-        raw: navText,
-        value: parseKoreanNumber(navText)
-      },
-      changeRate: changeRateText
-    });
-
-    if (items.length >= limit) return false; // cheerio each 탈출
+  const res = await axios.get(apiUrl, {
+    responseType: "arraybuffer", // euc-kr 이라 byte로 받아서 디코딩
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+        "AppleWebKit/537.36 (KHTML, like Gecko) " +
+        "Chrome/120.0.0.0 Safari/537.36",
+      "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+      Referer: `${BASE}/sise/etf.naver`,
+    },
   });
 
-  return { url, items };
+  // JSON or JSONP 디코딩
+  const decoded = iconv.decode(res.data, "euc-kr").trim();
+
+  // JSONP 형식일 수 있으니 { ... } 부분만 추출
+  const firstBrace = decoded.indexOf("{");
+  const lastBrace = decoded.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1) {
+    throw new Error("ETF API 응답에서 JSON을 찾을 수 없습니다.");
+  }
+
+  const jsonText = decoded.slice(firstBrace, lastBrace + 1);
+  const json = JSON.parse(jsonText);
+
+  if (json.resultCode !== "success") {
+    throw new Error(`ETF API 오류: ${json.resultCode || "unknown"}`);
+  }
+
+  const list = json.result?.etfItemList ?? [];
+
+  const items = list.slice(0, limit).map((etf) => {
+    // etf 객체 구조는 tplEtfItemListTableBody 참고
+    // { itemcode, itemname, nowVal, changeRate, nav, threeMonthEarnRate, quant, amonut, marketSum, ... }
+    return {
+      name: etf.itemname,
+      code: etf.itemcode,
+
+      currentPrice: {
+        raw: String(etf.nowVal ?? ""),
+        value: typeof etf.nowVal === "number" ? etf.nowVal : null,
+      },
+
+      nav: {
+        raw: etf.nav == null ? "" : String(etf.nav),
+        value: typeof etf.nav === "number" ? etf.nav : null,
+      },
+
+      changeRate:
+        etf.changeRate == null
+          ? null
+          : etf.changeRate.toFixed
+          ? etf.changeRate.toFixed(2)
+          : String(etf.changeRate),
+
+      threeMonthReturn:
+        etf.threeMonthEarnRate == null
+          ? null
+          : etf.threeMonthEarnRate.toFixed
+          ? etf.threeMonthEarnRate.toFixed(2)
+          : String(etf.threeMonthEarnRate),
+
+      volume: {
+        raw: String(etf.quant ?? ""),
+        value: typeof etf.quant === "number" ? etf.quant : null,
+      },
+
+      tradingValueMillion: {
+        raw: String(etf.amonut ?? ""),
+        value: typeof etf.amonut === "number" ? etf.amonut : null,
+      },
+
+      marketCapHundredMillion: {
+        raw: String(etf.marketSum ?? ""),
+        value: typeof etf.marketSum === "number" ? etf.marketSum : null,
+      },
+    };
+  });
+
+  return {
+    url: apiUrl,
+    items,
+  };
 }
+
+export { getEtfsByMarketCap };
+
 
 // 2) 테마: 전일대비 상승률 순 + 테마 주도주
 async function getThemesWithLeaders(limit = 50) {
@@ -325,15 +381,35 @@ server.registerTool(
         z.object({
           name: z.string(),
           code: z.string().nullable(),
+
           currentPrice: z.object({
             raw: z.string(),
-            value: z.number().nullable()
+            value: z.number().nullable(),
           }),
+
           nav: z.object({
             raw: z.string(),
-            value: z.number().nullable()
+            value: z.number().nullable(),
           }),
-          changeRate: z.string().nullable()
+
+          changeRate: z.string().nullable(),
+
+          threeMonthReturn: z.string().nullable(),
+
+          volume: z.object({
+            raw: z.string(),
+            value: z.number().nullable(),
+          }),
+
+          tradingValueMillion: z.object({
+            raw: z.string(),
+            value: z.number().nullable(),
+          }),
+
+          marketCapHundredMillion: z.object({
+            raw: z.string(),
+            value: z.number().nullable(),
+          }),
         })
       )
     })
@@ -351,6 +427,7 @@ server.registerTool(
     };
   }
 );
+
 
 // MCP Tool: 테마 + 주도주
 server.registerTool(

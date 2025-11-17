@@ -95,6 +95,25 @@ npx korea-stock-mcp
 
 - `claude_desktop_config.json` 파일을 수정해줍니다.
 
+```
+{
+  "mcpServers": {
+    "korea-stock-mcp": {
+      "command": "npx",
+      "args": ["-y", "@drfirst/korea-stock-mcp@latest"]
+    }
+  }
+}
+```
+
+
+---
+
+## 사용 예시
+
 예시 프롬프트:
 
-> "한국 ETF 시가총액 상위 20개를 korea-stock-mcp 서버의 get_etfs_by_market_cap 툴을 이용해서 가져와줘."
+> korea-stock-mcp를 활용해서 오늘의 주요 테마와 해당 테마 종목 조회
+> korea-stock-mcp를 활용해서 오늘 etf 정보 조회
+> korea-stock-mcp를 활용해서 오늘의 시가총액 순으로 주식종목 조회하기
+> korea-stock-mcp를 활용해서 티엘비의 시가 알아봐
