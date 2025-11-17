@@ -113,7 +113,7 @@ npx korea-stock-mcp
 
 예시 프롬프트:
 
-> korea-stock-mcp를 활용해서 오늘의 주요 테마와 해당 테마 종목 조회
-> korea-stock-mcp를 활용해서 오늘 etf 정보 조회
-> korea-stock-mcp를 활용해서 오늘의 시가총액 순으로 주식종목 조회하기
-> korea-stock-mcp를 활용해서 티엘비의 시가 알아봐
+> korea-stock-mcp를 활용해서 오늘의 주요 테마와 해당 테마 종목 조회  
+> korea-stock-mcp를 활용해서 오늘 etf 정보 조회  
+> korea-stock-mcp를 활용해서 오늘의 시가총액 순으로 주식종목 조회하기  
+> korea-stock-mcp를 활용해서 티엘비의 시가 알아봐  

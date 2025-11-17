@@ -41,13 +41,27 @@ function parseKoreanNumber(text) {
 }
 
 /**
- * ETF: 시가총액 기준 상위 ETF 리스트
+ * ETF: 정렬 기준에 따른 상위 ETF 리스트
  * etfType: 0 = 전체 (페이지 탭 기준)
+ * targetColumn:
+ *   - "market_sum"        시가총액(억)
+ *   - "acc_quant"         거래량
+ *   - "acc_amount"        거래대금(백만)
+ *   - "change_rate"       등락률
+ *   - "now_val"           현재가
+ *   - "3month_earn_rate"  3개월 수익률
+ * sortOrder: "desc" | "asc"
  */
-async function getEtfsByMarketCap(limit = 50, etfType = 0) {
+async function getEtfsByMarketCap(
+  limit = 50,
+  etfType = 0,
+  targetColumn = "acc_amount",
+  sortOrder = "desc"
+) {
   // 브라우저에서 사용하는 API 엔드포인트 그대로 사용
-  const apiUrl = `${BASE}/api/sise/etfItemList.nhn?etfType=${etfType}` +
-                 `&targetColumn=market_sum&sortOrder=desc`;
+  const apiUrl =
+    `${BASE}/api/sise/etfItemList.nhn?etfType=${etfType}` +
+    `&targetColumn=${targetColumn}&sortOrder=${sortOrder}`;
 
   const res = await axios.get(apiUrl, {
     responseType: "arraybuffer", // euc-kr 이라 byte로 받아서 디코딩
@@ -135,6 +149,7 @@ async function getEtfsByMarketCap(limit = 50, etfType = 0) {
 }
 
 export { getEtfsByMarketCap };
+
 
 
 // 2) 테마: 전일대비 상승률 순 + 테마 주도주
@@ -359,53 +374,52 @@ const server = new McpServer({
   version: "0.1.0"
 });
 
-// MCP Tool: ETF 목록
 server.registerTool(
   "get_etfs_by_market_cap",
   {
-    title: "시가총액 순 ETF 조회",
+    title: "ETF 목록 조회",
     description:
-      "https://finance.naver.com/sise/etf.naver 에서 시가총액 순으로 ETF 목록을 가져옵니다.",
-    inputSchema: {
-      limit: z
-        .number()
-        .int()
-        .positive()
-        .max(500)
-        .default(50)
-        .describe("최대 결과 개수 (기본 50)")
-    },
+      "네이버 금융에서 ETF 목록을 가져옵니다. 정렬 기준을 직접 지정할 수 있습니다.",
+    inputSchema: z.object({
+      limit: z.number().int().positive().max(500).default(50),
+      etfType: z.number().int().min(0).max(7).default(0)
+        .describe("ETF 탭 번호 (0=전체, 1~7)"),
+      targetColumn: z.enum([
+        "market_sum",
+        "acc_quant",
+        "acc_amount",
+        "change_rate",
+        "now_val",
+        "3month_earn_rate"
+      ]).default("market_sum")
+        .describe("정렬 기준 컬럼"),
+      sortOrder: z.enum(["asc", "desc"]).default("desc")
+        .describe("정렬 방향")
+    }),
     outputSchema: z.object({
       url: z.string().url(),
       items: z.array(
         z.object({
           name: z.string(),
           code: z.string().nullable(),
-
           currentPrice: z.object({
             raw: z.string(),
             value: z.number().nullable(),
           }),
-
           nav: z.object({
             raw: z.string(),
             value: z.number().nullable(),
           }),
-
           changeRate: z.string().nullable(),
-
           threeMonthReturn: z.string().nullable(),
-
           volume: z.object({
             raw: z.string(),
             value: z.number().nullable(),
           }),
-
           tradingValueMillion: z.object({
             raw: z.string(),
             value: z.number().nullable(),
           }),
-
           marketCapHundredMillion: z.object({
             raw: z.string(),
             value: z.number().nullable(),
@@ -414,8 +428,14 @@ server.registerTool(
       )
     })
   },
-  async ({ limit }) => {
-    const output = await getEtfsByMarketCap(limit);
+  async ({ limit, etfType, targetColumn, sortOrder }) => {
+    const output = await getEtfsByMarketCap(
+      limit,
+      etfType,
+      targetColumn,
+      sortOrder
+    );
+
     return {
       content: [
         {
