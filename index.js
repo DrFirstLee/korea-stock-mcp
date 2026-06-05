@@ -581,11 +581,13 @@ server.registerTool(
             raw: z.string(),
             value: z.number().nullable()
           }),
+          baseMonth: z.string().nullable(),
           dividend: z.object({
             raw: z.string(),
             value: z.number().nullable()
           }),
-          dividendYield: z.string().nullable()
+          dividendYield: z.string().nullable(),
+          payoutRatio: z.string().nullable()
         })
       )
     })
